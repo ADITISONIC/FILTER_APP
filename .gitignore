@@ -54,4 +54,4 @@ linux/flutter/ephemeral/
 # Firebase / secrets
 google-services.json
 GoogleService-Info.plist
-.env
+.env.env
