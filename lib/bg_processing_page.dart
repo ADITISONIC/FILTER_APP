@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:filter_app/payment_page.dart';
+import 'package:filter_app/printing_options_page.dart';
 import 'package:filter_app/whatsapp_sharer.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1322,16 +1324,17 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
           padding: EdgeInsets.all(20),
           child: Row(
             children: [
+              // In your main camera file, update the PRINT button section:
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(15),
                     gradient: LinearGradient(
-                      colors: [Colors.green, Colors.teal],
+                      colors: [Colors.orange, Colors.deepOrange],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withOpacity(0.4),
+                        color: Colors.orange.withOpacity(0.4),
                         blurRadius: 15,
                         offset: Offset(0, 5),
                       ),
@@ -1341,17 +1344,45 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
                     color: Colors.transparent,
                     borderRadius: BorderRadius.circular(15),
                     child: InkWell(
-                      onTap: _saveFinalImage,
+                      onTap: () {
+                        final imageToPrint = _processedImage ?? _capturedImage;
+                        if (imageToPrint != null) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => PrintingOptionsPage(
+                                imageFile: imageToPrint,
+                                onProceedToPayment: (printingOptions) {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => PaymentPage(
+                                        printingOptions: printingOptions,
+                                        imageFile: imageToPrint,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('No image to print'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
                       borderRadius: BorderRadius.circular(15),
                       child: Container(
                         padding: EdgeInsets.symmetric(vertical: 15),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.download_rounded, color: Colors.white, size: 20),
+                            Icon(Icons.print_rounded, color: Colors.white, size: 20),
                             SizedBox(width: 8),
                             Text(
-                              'SAVE',
+                              'PRINT',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
