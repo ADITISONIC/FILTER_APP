@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:filter_app/payment_page.dart';
+import 'package:filter_app/photo_frame_model.dart';
+import 'package:filter_app/photo_frames_page.dart';
 import 'package:filter_app/printing_options_page.dart';
 import 'package:filter_app/whatsapp_sharer.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +31,8 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
   bool _isCameraReady = false;
   bool _isLoading = true;
   String? _error;
+  int? _selectedFrameIndex;
+  String? _selectedFrameAssetPath;
   final ImagePicker _picker = ImagePicker();
 
 
@@ -133,7 +137,7 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
 
   // API Configuration
   static const String _removeBgApiKey = 'AConojVSq2jeYYW2vZmJwXGz';
-  static const String _picsartApiKey = 'paat-DIbr2CC1k1MKjyFFg6kgcOjyv6J';
+  static const String _picsartApiKey = 'paat-BOI36NDH81MSmtcwrtpqX26Kiai';
 
   @override
   void initState() {
@@ -555,9 +559,12 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
       _processedImage = null;
       _selectedBackground = null;
       _selectedFilter = 0;
+      _selectedFrameIndex = null;
+      _selectedFrameAssetPath = null;
       _error = null;
     });
   }
+
 
   void _goBack() {
     setState(() {
@@ -565,6 +572,8 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
         _currentFlow = AppFlow.camera;
         _capturedImage = null;
         _processedImage = null;
+        // Keep frame settings when going back to camera?
+        // Or reset them? Let's keep them for now
       } else if (_currentFlow == AppFlow.backgroundChange) {
         _currentFlow = AppFlow.editingOptions;
       } else if (_currentFlow == AppFlow.finalOutput) {
@@ -572,6 +581,7 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
       }
     });
   }
+
 
   Widget _buildCameraView() {
     if (_isLoading) {
@@ -866,7 +876,9 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
         Expanded(
           flex: 2,
           child: Container(
-            margin: EdgeInsets.all(20),
+            width: 300, // ← CHANGE THIS WIDTH (Edit & Final Results)
+            height: 300,
+            margin: EdgeInsets.all(60),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(25),
               boxShadow: [
@@ -879,49 +891,7 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(25),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Show background if selected, otherwise show checkboard
-                  if (_selectedBackground != null)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            _selectedBackground!['preview_color'],
-                            _selectedBackground!['preview_color'].withOpacity(0.7),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Colors.grey.shade900,
-                      child: CustomPaint(
-                        painter: _CheckboardPainter(),
-                      ),
-                    ),
-
-                  // Show processed image (background removed) or original captured image
-                  if (_processedImage != null)
-                    Image.file(_processedImage!, fit: BoxFit.cover)
-                  else if (_capturedImage != null)
-                    Image.file(_capturedImage!, fit: BoxFit.cover),
-
-                  // Apply selected filter
-                  if (_filters[_selectedFilter]['colorFilter'] != null)
-                    ColorFiltered(
-                      colorFilter: _filters[_selectedFilter]['colorFilter']!,
-                      child: Container(color: Colors.transparent),
-                    ),
-                  if (_filters[_selectedFilter]['gradient'] != null)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: _filters[_selectedFilter]['gradient'],
-                      ),
-                    ),
-                ],
-              ),
+              child: _buildImageWithEffects(), // Updated this line
             ),
           ),
         ),
@@ -1003,6 +973,41 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
               SizedBox(width: 15),
               Expanded(
                 child: _buildEditingOptionButton(
+                  'Add Frame',
+                  Icons.image_aspect_ratio_outlined,
+                  Colors.orange,
+                      () {
+                    final imageForFrame = _processedImage ?? _capturedImage;
+                    if (imageForFrame != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PhotoFramesPage(
+                            imageFile: imageForFrame,
+                            onFrameApplied: (framedImage, frameIndex, frameAssetPath) {
+                              setState(() {
+                                // Store the frame asset path for background pattern
+                                _selectedFrameAssetPath = frameAssetPath;
+                                _selectedFrameIndex = frameIndex;
+                              });
+                            },
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('No image available for framing'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+              SizedBox(width: 15),
+              Expanded(
+                child: _buildEditingOptionButton(
                   'Save & Share',
                   Icons.download_rounded,
                   Colors.green,
@@ -1016,10 +1021,47 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
             ],
           ),
         ),
+
+        // Remove Frame Button (if frame is applied)
+        if (_selectedFrameAssetPath != null)
+          Container(
+            padding: EdgeInsets.only(bottom: 20, left: 20, right: 20),
+            child: ElevatedButton(
+              onPressed: _removeFrame,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.withOpacity(0.8),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                padding: EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.delete_outline, size: 20),
+                  SizedBox(width: 8),
+                  Text('REMOVE FRAME'),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
+  void _removeFrame() {
+    setState(() {
+      _selectedFrameIndex = null;
+      _selectedFrameAssetPath = null;
+    });
 
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Frame removed'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
   Widget _buildEditingOptionButton(String title, IconData icon, Color color, VoidCallback onTap) {
     return Material(
       color: Colors.transparent,
@@ -1077,50 +1119,7 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(25),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Show selected background color as fallback
-                  if (_selectedBackground != null)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            _selectedBackground!['preview_color'],
-                            _selectedBackground!['preview_color'].withOpacity(0.7),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Colors.grey.shade900,
-                      child: CustomPaint(
-                        painter: _CheckboardPainter(),
-                      ),
-                    ),
-
-                  // Show the image (processed or original)
-                  if (_processedImage != null)
-                    Image.file(_processedImage!, fit: BoxFit.contain)
-                  else if (_capturedImage != null)
-                    Image.file(_capturedImage!, fit: BoxFit.contain),
-
-                  // Apply selected filter
-                  if (_filters[_selectedFilter]['colorFilter'] != null)
-                    ColorFiltered(
-                      colorFilter: _filters[_selectedFilter]['colorFilter']!,
-                      child: Container(color: Colors.transparent),
-                    ),
-
-                  if (_filters[_selectedFilter]['gradient'] != null)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: _filters[_selectedFilter]['gradient'],
-                      ),
-                    ),
-                ],
-              ),
+              child: _buildImageWithEffects(), // Updated this line
             ),
           ),
         ),
@@ -1267,7 +1266,9 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
         _buildFlowHeader('FINAL RESULT'),
         Expanded(
           child: Container(
-            margin: EdgeInsets.all(20),
+            width: 300,
+            height: 300,
+            margin: EdgeInsets.all(60),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(25),
               boxShadow: [
@@ -1280,51 +1281,16 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(25),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Show the processed image with background (this is the main image)
-                  if (_processedImage != null)
-                    Image.file(_processedImage!, fit: BoxFit.cover)
-                  else if (_capturedImage != null)
-                    Image.file(_capturedImage!, fit: BoxFit.cover)
-                  else
-                    Container(
-                      color: Colors.grey.shade900,
-                      child: Center(
-                        child: Text(
-                          'No Image Available',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // Apply selected filter overlay
-                  if (_filters[_selectedFilter]['colorFilter'] != null)
-                    ColorFiltered(
-                      colorFilter: _filters[_selectedFilter]['colorFilter']!,
-                      child: Container(color: Colors.transparent),
-                    ),
-
-                  if (_filters[_selectedFilter]['gradient'] != null)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: _filters[_selectedFilter]['gradient'],
-                      ),
-                    ),
-                ],
-              ),
+              child: _buildImageWithEffects(), // Updated this line
             ),
           ),
         ),
         Container(
+          width: 250,
+          height: 250,
           padding: EdgeInsets.all(20),
           child: Row(
             children: [
-              // In your main camera file, update the PRINT button section:
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -1462,6 +1428,150 @@ class _CameraToBgFlowPageState extends State<CameraToBgFlowPage>
       ],
     );
   }
+  Widget _buildImageWithEffects() {
+    // If frame is selected, use the background pattern approach
+    if (_selectedFrameAssetPath != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background Pattern Frame
+          Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage(_selectedFrameAssetPath!),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+
+          // Your Photo placed on top with padding
+          Center(
+            child: Container(
+              width: 200, // ← CHANGE THIS WIDTH
+              height: 250,
+              margin: EdgeInsets.all(20), // Adjust padding as needed
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: _buildMainImageContent(),
+              ),
+            ),
+          ),
+
+          // Filter effects (applied as overlay on the photo only)
+          if (_filters[_selectedFilter]['colorFilter'] != null)
+            Positioned.fill(
+              child: Center(
+                child: Container(
+                  margin: EdgeInsets.all(30),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: ColorFiltered(
+                      colorFilter: _filters[_selectedFilter]['colorFilter']!,
+                      child: Container(
+                        color: Colors.transparent,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          if (_filters[_selectedFilter]['gradient'] != null)
+            Positioned.fill(
+              child: Center(
+                child: Container(
+                  margin: EdgeInsets.all(30),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: _filters[_selectedFilter]['gradient'],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    // Original code when no frame is selected
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Background color or checkboard
+        if (_selectedBackground != null)
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _selectedBackground!['preview_color'],
+                  _selectedBackground!['preview_color'].withOpacity(0.7),
+                ],
+              ),
+            ),
+          )
+        else
+          Container(
+            color: Colors.grey.shade900,
+            child: CustomPaint(
+              painter: _CheckboardPainter(),
+            ),
+          ),
+
+        // Main image (processed or captured)
+        _buildMainImageContent(),
+
+        // Filter effects (applied as overlay)
+        if (_filters[_selectedFilter]['colorFilter'] != null)
+          ColorFiltered(
+            colorFilter: _filters[_selectedFilter]['colorFilter']!,
+            child: Container(color: Colors.transparent),
+          ),
+
+        if (_filters[_selectedFilter]['gradient'] != null)
+          Container(
+            decoration: BoxDecoration(
+              gradient: _filters[_selectedFilter]['gradient'],
+            ),
+          ),
+      ],
+    );
+  }
+
+// Helper method to build the main image content
+  Widget _buildMainImageContent() {
+    if (_processedImage != null) {
+      return Image.file(_processedImage!, fit: BoxFit.cover);
+    } else if (_capturedImage != null) {
+      return Image.file(_capturedImage!, fit: BoxFit.cover);
+    } else {
+      return Container(
+        color: Colors.grey.shade900,
+        child: Center(
+          child: Text(
+            'No Image Available',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
 
   Widget _buildFlowHeader(String title) {
     return Container(
@@ -1806,4 +1916,375 @@ class _CheckboardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+// Add this class inside your same file, before the last closing brace
+class PhotoFramesPage extends StatefulWidget {
+  final File imageFile;
+  final Function(File?, int?, String?) onFrameApplied;
+
+  const PhotoFramesPage({
+    Key? key,
+    required this.imageFile,
+    required this.onFrameApplied,
+  }) : super(key: key);
+
+  @override
+  State<PhotoFramesPage> createState() => _PhotoFramesPageState();
+}
+
+class _PhotoFramesPageState extends State<PhotoFramesPage> {
+  int? _selectedFrameIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text(
+          'Choose Frame',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+            color: Colors.white,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          if (_selectedFrameIndex != null)
+            Container(
+              margin: EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFF7C4DFF), Color(0xFFE040FB)],
+                ),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.check_rounded, size: 24, color: Colors.white),
+                splashRadius: 20,
+                onPressed: () {
+                  widget.onFrameApplied(
+                    null,
+                    _selectedFrameIndex,
+                    photoFrames[_selectedFrameIndex!].backgroundAsset,
+                  );
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Preview Section
+          Expanded(
+            flex: 2,
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1E1E1E), Color(0xFF121212)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _selectedFrameIndex == null
+                    ? _buildNoFramePreview()
+                    : _buildFramedPreview(),
+              ),
+            ),
+          ),
+
+          // Frames Selection
+          Expanded(
+            flex: 1,
+            child: _buildFramesGrid(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoFramePreview() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Hero(
+            tag: 'photo_preview',
+            child: Container(
+              width: 200,
+              height: 250,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(
+                  image: FileImage(widget.imageFile),
+                  fit: BoxFit.cover,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Select a frame below',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFramedPreview() {
+    final frame = photoFrames[_selectedFrameIndex!];
+
+    return Stack(
+      children: [
+        // Frame background
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            image: DecorationImage(
+              image: AssetImage(frame.backgroundAsset),
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+
+        // Photo overlay
+        Center(
+          child: Container(
+            width: 250,
+            height: 300,
+            margin: EdgeInsets.all(frame.photoPadding),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(frame.borderRadius),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(frame.borderRadius),
+              child: Image.file(
+                widget.imageFile,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFramesGrid() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: Colors.black.withOpacity(0.4),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.vertical,
+        itemCount: photoFrames.length,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemBuilder: (context, index) {
+          final frame = photoFrames[index];
+          final isSelected = _selectedFrameIndex == index;
+
+          // Each frame card styled like your buttons
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedFrameIndex = index;
+              });
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isSelected
+                      ? [const Color(0xFF2962FF), const Color(0xFF0D47A1)] // blue glow when selected
+                      : [const Color(0xFF1E1E1E), const Color(0xFF121212)],
+                ),
+                border: Border.all(
+                  color: isSelected
+                      ? Colors.blueAccent.withOpacity(0.6)
+                      : Colors.white.withOpacity(0.05),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  if (isSelected)
+                    BoxShadow(
+                      color: Colors.blueAccent.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Frame thumbnail
+                  Container(
+                    width: 45,
+                    height: 45,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      image: DecorationImage(
+                        image: AssetImage(frame.backgroundAsset),
+                        fit: BoxFit.cover,
+                      ),
+                      border: Border.all(color: Colors.white24, width: 1),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+
+                  // Frame name text
+                  Expanded(
+                    child: Text(
+                      frame.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFrameItem(int index) {
+    final frame = photoFrames[index];
+    bool isSelected = _selectedFrameIndex == index;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFrameIndex = index;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        width: 50,
+        height: 50,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.blueAccent.withOpacity(0.15)
+              : Colors.grey[850],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.blueAccent : Colors.transparent,
+            width: 2,
+          ),
+          boxShadow: isSelected
+              ? [
+            BoxShadow(
+              color: Colors.blueAccent.withOpacity(0.5),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ]
+              : [],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Frame preview
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                image: DecorationImage(
+                  image: AssetImage(frame.backgroundAsset),
+                  fit: BoxFit.cover,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 5,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white70, width: 2),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              frame.name,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.2,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

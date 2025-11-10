@@ -4,6 +4,8 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:clipboard/clipboard.dart';
 import 'printing_models.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class PaymentPage extends StatefulWidget {
   final PrintingOptions printingOptions;
@@ -30,7 +32,7 @@ class _PaymentPageState extends State<PaymentPage> {
   // For production: "rzp_live_YOUR_LIVE_KEY_ID"
 
   // Replace with your actual UPI ID
-  final String _merchantUPI = 'your-business@ybl'; // Change to your UPI ID
+  final String _merchantUPI = 'anything@payu'; // Change to your UPI ID
 
   @override
   void initState() {
@@ -52,12 +54,25 @@ class _PaymentPageState extends State<PaymentPage> {
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
   }
 
-  void _createOrder() async {
-    // In a real app, you would call your backend to create an order
-    // For demo purposes, we're generating a client-side order ID
-    setState(() {
-      _orderId = 'ORDER_${DateTime.now().millisecondsSinceEpoch}';
-    });
+
+  Future<void> _createOrder() async {
+    final url = Uri.parse('https://filter-app-server.onrender.com/create-order'); // your public URL
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'amount': widget.printingOptions.totalAmount}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      setState(() {
+        _orderId = data['id'];
+      });
+      print('Order created: $_orderId');
+    } else {
+      print('Create order failed: ${response.statusCode} ${response.body}');
+      // show error to user
+    }
   }
 
   // Generate UPI QR code data

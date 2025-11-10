@@ -82,8 +82,6 @@ class _PrintingOptionsPageState extends State<PrintingOptionsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildImagePreview(),
-                    SizedBox(height: 30),
                     _buildSizeSelection(),
                     SizedBox(height: 30),
                     _buildCopiesSelection(),
@@ -141,35 +139,7 @@ class _PrintingOptionsPageState extends State<PrintingOptionsPage> {
     );
   }
 
-  Widget _buildImagePreview() {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.purple.withOpacity(0.3),
-            blurRadius: 20,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: widget.imageFile != null
-            ? Image.file(widget.imageFile!, fit: BoxFit.cover)
-            : Container(
-          color: Colors.grey.shade800,
-          child: Center(
-            child: Text(
-              'No Image',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildSizeSelection() {
     return Column(
